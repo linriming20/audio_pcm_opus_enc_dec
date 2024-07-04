@@ -116,11 +116,16 @@ int main(int argc, char *argv[])
         }
 
         // step3: 编码
-        len = opus_encode(encoder, (const opus_int16 *)read_buff, encode_per_size, encoded_buff, encode_per_size);
+        len = opus_encode(encoder, (const opus_int16 *)read_buff, encode_per_samples, encoded_buff, encode_per_size);
         printf("+++ encoder output opus data len: %d\n", len);
         if(len > 0)
         {
-            fwrite(encoded_buff, len, 1, fp_out_opus);
+            /* 写入帧大小 */
+            /* LRM: 这里写入接下来编码的数据大小，这里记录方便后面解码知道要读多少，不是标准的opus文件格式 */
+            fwrite(&len, 1, sizeof(len), fp_out_opus);
+            /* 写入编码数据 */
+            /* LRM: 这里写入编码后的opus数据 */
+            fwrite(encoded_buff, 1, len, fp_out_opus);
         }
         else
         {

@@ -21,13 +21,13 @@ int main(int argc, char *argv[])
 
 
     /* 检查参数 */
-    if(argc != 7)
+    if(argc != 6)
     {
         printf("Usage: \n"
-                "\t %s <in-opus-file> <sample-rate> <bits per sample> <channels> <per decode size> <out-pcm-file>\n"
+                "\t %s <in-opus-file> <sample-rate> <bits per sample> <channels> <out-pcm-file>\n"
                 "examples: \n"
-                "\t %s out1.opus 8000 16 1 199 out_8000_16_1.pcm\n"
-                "\t %s out2.opus 16000 16 2 898 out_16000_16_2.pcm\n"
+                "\t %s out1.opus 8000 16 1 out_8000_16_1.pcm\n"
+                "\t %s out2.opus 16000 16 2 out_16000_16_2.pcm\n"
                 , argv[0], argv[0], argv[0]);
         return -1;
     }
@@ -35,8 +35,7 @@ int main(int argc, char *argv[])
     sample_rate = atoi(argv[2]);
     bits_per_sample = atoi(argv[3]);
     channels = atoi(argv[4]);
-    decode_per_size = atoi(argv[5]);
-    out_pcm_file_name = argv[6];
+    out_pcm_file_name = argv[5];
 
     switch(sample_rate)
     {
@@ -89,14 +88,25 @@ int main(int argc, char *argv[])
 
     unsigned int decode_per_samples = sample_rate / 50; // 20ms, 只能是 2.5, 5, 10, 20, 40 或 60 毫秒
     unsigned int decode_out_per_size = decode_per_samples * bits_per_sample/8 * channels;
-    unsigned char *read_buff = calloc(decode_per_size, 1);
+    unsigned char *read_buff = calloc(decode_out_per_size, 1);
     unsigned char *decoded_buff = calloc(decode_out_per_size, 1); // 1s/50=20ms, 最大也就跟没压缩一样大小
-    printf("It will decode opus file. (sample_rate: %d, channels: %d, decode_per_size: %d, decode out buf size: %d)\n",
-        sample_rate, channels, decode_per_size, decode_out_per_size);
+    printf("It will decode opus file. (sample_rate: %d, channels: %d, decode out buf size: %d)\n",
+        sample_rate, channels, decode_out_per_size);
     while(1)
     {
         int len = 0;
-        len = fread(read_buff, 1, decode_per_size, fp_in_opus);
+        int opus_bytes = 0;
+        /* LRM: 这里读出接下来的opus编码数据长度，对应于我们编码时写入的数据长度 */
+        len = fread(&opus_bytes, 1, sizeof(opus_bytes), fp_in_opus);
+        if(len <= 0)
+        {
+            // file end
+            printf("file end or error with read return value(%d).\n", len);
+            break;
+        }
+
+        /* LRM: 这里读出编码后的opus数据 */
+        len = fread(read_buff, 1, opus_bytes, fp_in_opus);
         printf("--- read src opus data len: %d\n", len);
         if(len <= 0)
         {
@@ -108,11 +118,11 @@ int main(int argc, char *argv[])
         // step3: 编码
         //len = opus_decode(decoder, (const unsigned char *)read_buff, len, (opus_int16 *)decoded_buff, decode_per_samples, 0);
         //len = opus_decode(decoder, (const unsigned char *)read_buff, len, (opus_int16 *)decoded_buff, decode_per_samples * bits_per_sample/8, 0);
-        len = opus_decode(decoder, (const unsigned char *)read_buff, len, (opus_int16 *)decoded_buff, decode_per_samples * bits_per_sample/8 * channels, 0);
+        len = opus_decode(decoder, (const unsigned char *)read_buff, len, (opus_int16 *)decoded_buff, decode_per_samples, 0);
         printf("+++ decode output opus data len: %d\n", len);
         if(len > 0)
         {
-            fwrite(decoded_buff, len, 1, fp_out_pcm);
+            fwrite(decoded_buff, sizeof(short)*channels, len, fp_out_pcm);
         }
         else
         {
